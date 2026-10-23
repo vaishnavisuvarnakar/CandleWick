@@ -12,7 +12,15 @@ export const GEMINI_FLASH_MODEL = 'gemini-3.8-flash';
 
 // Zod schema for validating Step 1 classification
 export const ClassificationSchema = z.object({
-  mode: z.enum(['listen', 'advise', 'celebrate', 'process', 'concern']),
+  mode: z.preprocess((val) => {
+    if (typeof val !== 'string') return 'listen';
+    const clean = val.toLowerCase().trim();
+    if (clean === 'advice') return 'advise';
+    if (clean === 'crisis' || clean === 'danger' || clean === 'self-harm') return 'concern';
+    if (clean === 'joy' || clean === 'achievement' || clean === 'celebrating') return 'celebrate';
+    if (clean === 'thinking' || clean === 'reflecting') return 'process';
+    return clean;
+  }, z.enum(['listen', 'advise', 'celebrate', 'process', 'concern'])),
   reason: z.string().optional().default(''),
 });
 
@@ -21,17 +29,30 @@ export type ClassificationResult = z.infer<typeof ClassificationSchema>;
 /**
  * System instruction for Step 1: Mode Classifier
  */
-const CLASSIFICATION_SYSTEM_INSTRUCTION = `You are an empathic, attentive reader classifying a personal journal entry into exactly one of five emotional modes.
+const CLASSIFICATION_SYSTEM_INSTRUCTION = `You are a precise classifier categorizing a personal journal entry into exactly one of five emotional modes:
 
-The modes are:
-- "listen": Venting, expressing feelings, wanting to be heard, not asking for answers, processing day-to-day heaviness without seeking advice.
-- "advise": Explicitly or implicitly asking what to do, seeking options, struggling with a decision, or looking for practical direction.
-- "celebrate": Sharing good news, milestones, gratitude, relief, joy, or an achievement.
-- "process": Working through a complex thought, untangling conflicting emotions, seeking self-understanding, open to gentle reflection and guiding questions.
-- "concern": Signs of serious distress, crisis, hopelessness, severe depression, or self-harm.
+1. "advise":
+- The writer is explicitly or implicitly seeking guidance, options, or advice on what to do.
+- Indicators: Questions like "What should I do?", "Where do I begin?", "How do I choose/handle/weigh this?", weighing dilemmas or career/roommate/work choices.
 
-Default to "listen" if you are unsure.
-Return valid JSON matching the schema with fields "mode" and "reason" (a brief 1-sentence explanation).`;
+2. "celebrate":
+- The writer is sharing good news, achievements, creative triumphs, milestones, relief, or gratitude.
+- Indicators: "I passed!", "paid off debt", painting breakthroughs, baking successes, feeling proud or joyful.
+
+3. "concern":
+- The writer expresses severe crisis, hopelessness, self-harm, desire to disappear, despair, or acute emotional danger.
+- Indicators: "want to disappear and never wake up", "urge to hurt myself", "no point in living", giving away possessions, standing on a bridge.
+
+4. "process":
+- The writer is examining their own psychology, untangling complex/conflicting feelings, or exploring identity and transitions.
+- Indicators: Introspective questions about self-patterns: "Why did that comment bother me?", "Am I safe or careful?", turning 30 reflections, questioning why they apologize constantly.
+
+5. "listen":
+- The writer is venting about fatigue, exhausting meetings, bad weather, daily frustration, loneliness, or missing the past, WITHOUT asking for advice or analyzing psychology.
+- They simply want to be heard in silence.
+
+Default to "listen" if none of the specific signals above apply.
+Return JSON with "mode" and "reason".`;
 
 /**
  * Step 1: Classify the journal entry
@@ -45,7 +66,7 @@ export async function classifyEntry(
 
     const response = await ai.models.generateContent({
       model: GEMINI_FLASH_MODEL,
-      contents: `Please classify this journal entry:\n\n"""\n${entryText}\n"""`,
+      contents: `Classify this journal entry:\n\n${entryText}`,
       config: {
         systemInstruction: CLASSIFICATION_SYSTEM_INSTRUCTION,
         responseMimeType: 'application/json',
@@ -54,16 +75,17 @@ export async function classifyEntry(
           properties: {
             mode: {
               type: Type.STRING,
-              description: 'The classified mode: listen, advise, celebrate, process, or concern.',
+              enum: ['listen', 'advise', 'celebrate', 'process', 'concern'],
+              description: 'Exactly one mode: listen, advise, celebrate, process, or concern.',
             },
             reason: {
               type: Type.STRING,
-              description: 'Brief reason for the classification.',
+              description: 'Brief reason for classification.',
             },
           },
           required: ['mode'],
         },
-        temperature: 0.2,
+        temperature: 0,
       },
     });
 
