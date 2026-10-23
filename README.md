@@ -1,97 +1,112 @@
 # CandleWick 🕯️
 
-A private, cozy journaling app with client-side encryption and gentle AI reflections. Designed to feel like a quiet study at night with an armchair and a burning candle.
+**A private, cozy journal that knows when to listen and when to advise.**
+
+Write freely: no prompts, no streaks, no mood trackers. When you want a reflection, CandleWick first works out what you need (to be heard, to get advice, to celebrate, or to think something through) and responds in that mode. Designed to feel like a quiet study at night with an armchair and a burning candle.
+
+**Live demo:** https://candlewick-beta.vercel.app/ · **Built for:** PromptWars
 
 ---
 
-## 🏛️ Architecture & Client-Only Design
+## Why CandleWick
 
-- **Static Single-Page Application (SPA):** Built with React 19, TypeScript, and Vite. Designed to be deployed effortlessly to static hosting platforms such as Vercel, Cloudflare Pages, or GitHub Pages.
-- **Zero-Server Architecture:** There is no backend, no Express server, and no third-party database. Everything runs directly inside your browser.
-- **Local Persistence via IndexedDB (Dexie.js):** All journal entries are stored inside browser-managed IndexedDB tables. Data never leaves your device unless you choose to export it.
+Most journaling apps either just store entries, or answer everything with the same cheerful advice. Many push streaks and progress charts that make people feel guilty and quit, and they ask you to trust a company with your most personal writing. CandleWick takes the opposite approach: one calm blank page, an AI that sometimes chooses *not* to give advice, and no server that could ever see or sell your entries.
 
----
+## Features
 
-## 🔒 Privacy & Cryptography Design
-
-- **Client-Side Encryption at Rest (AES-GCM 256-bit):**
-  - Your master passphrase derives a high-security cryptographic key using the Web Crypto API (`crypto.subtle`) via **PBKDF2** with **100,000 iterations**, SHA-256, and a cryptographically random 16-byte salt.
-  - Every single journal entry, including writing text and generated reflection analysis, is encrypted using **AES-GCM** with a unique 12-byte initialization vector (IV) per entry.
-  - No master key or recovery backdoor exists. If the passphrase is forgotten, encrypted entries cannot be decrypted.
-- **Bring-Your-Own-Key (BYOK) AI Reflections:**
-  - Uses the official `@google/genai` TypeScript SDK directly from the client.
-  - The model name is strictly maintained in a single constant (`gemini-3.8-flash`).
-  - By default, your Gemini API key is retained only in memory and `sessionStorage`.
-  - When you enable *"Remember my API key on this device"*, the key is encrypted at rest using your passphrase-derived AES-GCM key before touching storage.
-  - **No telemetry, tracking, or analytics:** No cookies, trackers, or telemetry scripts are included.
+- Free-form two-page notebook with autosave
+- **Reflect:** an AI that classifies what you need, then responds accordingly, shown on the facing page with a page-turn animation
+- **Weekly reflection:** a brief summary of your last 7 days, in a popup
+- Light dashboard: entries per day and "what you needed lately", with no goals and no streaks
+- Markdown export, native sharing, and encrypted backup
+- Crisis-aware: if an entry suggests serious distress, the AI drops the journaling persona and points to trusted people and local emergency services
 
 ---
 
-## 🤖 Two-Step AI Reflection Flow
+## 🏛️ Architecture
 
-1. **Step 1: Emotional Classifier (`classifyEntry`)**
-   - Evaluates the user's entry using structured JSON output (`responseMimeType: "application/json"`).
-   - Classifies the writing into one of five distinct modes:
-     - `listen`: Venting, wanting to be heard, not asking for answers.
-     - `advise`: Explicitly or implicitly asking what to do.
-     - `celebrate`: Good news, milestones, or achievements.
-     - `process`: Working through conflicting thoughts or questions.
-     - `concern`: Signs of serious crisis or distress.
-   - Validated at runtime using **Zod** schema parsing, falling back smoothly to `listen` on any schema ambiguity.
+- **Static SPA:** React 19, TypeScript, Vite, Tailwind CSS v4. Deploys to any static host (Vercel, Cloudflare Pages, GitHub Pages).
+- **Zero-server:** no backend, no Express server, no third-party database. Everything runs in the browser.
+- **Local persistence:** entries are stored in IndexedDB via Dexie.js.
 
-2. **Step 2: Mode-Specific Reflection (`generateReflection`)**
-   - Applies dedicated system instructions per mode:
-     - `listen`: Reflects back feeling with warm care; no advice, no toxic positivity or silver linings.
-     - `advise`: Acknowledges first, then offers 2–3 gentle, concrete suggestions framed as possibilities.
-     - `celebrate`: Specific, genuine cheer for the accomplishments shared.
-     - `process`: Identifies underlying themes and asks one or two open-ended questions.
-     - `concern`: Drops the journaling persona; offers calm care, safety guidance, and encouragement to connect with local emergency services or a trusted loved one (without fabricating numbers).
-   - All reflections are kept under 180 words with plain, warm human language.
+## 🔒 Privacy & Security
 
-3. **Weekly Fireside Reflection (`generateWeeklyReflection`)**
-   - Analyzes entries from the past 7 days (requiring at least 2 entries).
-   - Produces a concise synthesis (under 220 words) detailing recurring themes, what brought peace, and one gentle thought for the week ahead.
+- **Client-side encryption at rest (AES-GCM 256-bit):** your passphrase derives a key via the Web Crypto API using **PBKDF2** (100,000 iterations, SHA-256, random 16-byte salt). Every entry, including its generated reflection, is encrypted with a unique 12-byte IV. There is no recovery backdoor: if you forget your passphrase, entries cannot be decrypted.
+- **Bring-your-own-key (BYOK):** the app uses the official `@google/genai` SDK directly from the browser with *your* Gemini API key. By default the key stays in memory and `sessionStorage`; with "Remember my API key on this device", it is encrypted with your passphrase-derived key before storage.
+- **No telemetry, analytics, or cookies.** Apart from the Gemini API, the only third-party request is loading fonts from Google Fonts.
+- **Validated I/O:** model output is schema-validated with Zod before use, and user text is rendered as text, never HTML.
+- **Honest limitation:** entries stay on your device, **except** when you click Reflect: that entry (or the last 7 days, for the weekly reflection) is sent to Google's Gemini API using your own key, so Google's API terms apply to that content. Check the current Gemini API terms for how data is handled on your plan.
+- The repo contains no secrets, and the app needs no environment variables.
+
+## 🤖 Two-step AI reflection
+
+1. **Classify (`classifyEntry`):** Gemini returns structured JSON (`responseMimeType: "application/json"`) choosing one mode, validated with Zod and falling back to `listen` on any ambiguity:
+   - `listen`: venting, wants to be heard
+   - `advise`: asking what to do
+   - `celebrate`: good news or milestones
+   - `process`: working through conflicting thoughts
+   - `concern`: signs of serious distress
+2. **Respond (`generateReflection`):** a dedicated system instruction per mode, under 180 words. `listen` offers no advice and no silver linings; `advise` acknowledges first, then gives 2 to 3 gentle options; `celebrate` gives specific cheer; `process` reflects themes and asks one or two questions; `concern` drops the persona, offers calm care and encourages contacting a trusted person or local emergency services, without inventing phone numbers. All modes validate feelings without endorsing harmful beliefs, never flatter, never diagnose, and never claim to be a therapist.
+3. **Weekly reflection (`generateWeeklyReflection`):** analyzes entries from the last 7 days (minimum 2) and writes under 220 words on recurring themes, what brought peace, and one gentle thought for the week ahead.
+
+The model name lives in a single constant, so it is easy to update.
+
+## 🧪 Benchmark & evaluation
+
+`src/lib/evals.ts` holds 20 labeled sample entries across all five modes. Run it at `/dev/eval`, via `#dev-eval`, or from the Settings modal. Results from our run:
+
+- Classifier accuracy: **[X/20, XX%]**
+- Average classification latency: **[X ms]**
+- Average full reflection latency: **[X s]**
+
+## 🎯 How it maps to the judging criteria
+
+| Criterion | How CandleWick addresses it |
+|---|---|
+| **Security** | Local-first, no server, AES-GCM encryption at rest, BYOK, no secrets in repo, schema-validated model output |
+| **Efficiency** | Two small model calls per reflection, a Flash-class model, instant local reads and writes, static CDN hosting |
+| **Technology** | Two-step agentic flow (classify, then mode-specific response), structured output, runtime validation, WebCrypto |
+| **Performance** | Measured classifier accuracy and latency (see above) |
+| **Google technology** | Gemini API via `@google/genai`, built in Google AI Studio, Google Fonts |
+
+## 🎨 Design
+
+- **Palette:** espresso `#1F120C`, mahogany `#3B2016`, rust `#8C3B1E`, burnt orange `#C8621F`, candle amber `#E8A33D`, parchment `#F3E6D0`, ink `#2A1A12`
+- **Typography:** Lora (serif) for journal pages and headings, Inter for UI
+- Pure-CSS drifting embers (disabled under `prefers-reduced-motion`), an animated SVG candle flame, a flat-vector armchair-and-fireplace illustration, a two-page notebook with a spine shadow, and a 3D page-flip between writing and reflection
+
+## 🚀 Run locally
+
+```bash
+git clone https://github.com/[your-username]/CandleWick.git
+cd CandleWick
+npm install
+npm run dev
+```
+
+Open the local address, paste your own Gemini API key from [Google AI Studio](https://aistudio.google.com/), and set a passphrase.
+
+## ☁️ Deploy
+
+Import the repo in Vercel and keep the Vite defaults (build `npm run build`, output `dist`). No environment variables needed.
+
+## 📚 Disclosures
+
+- **AI-assisted development:** the app was generated and iterated with Google AI Studio (Gemini), using prompts written with help from Claude (Anthropic), then reviewed and tested by the author.
+- **Open-source libraries:** React, TypeScript, Vite, Tailwind CSS, Dexie.js, `@google/genai`, Zod, Recharts, Lucide React (see `package.json` for versions).
+- **Fonts:** Lora and Inter via Google Fonts (SIL Open Font License).
+- **Illustration:** [created by the author / generated with X, license].
+
+## 🗺️ Roadmap
+
+- Optional end-to-end encrypted sync (ciphertext only) via Firebase
+- "Preview what will be sent" before each reflection, with optional name redaction
+- Self-hosted fonts and full offline PWA support
+
+## ⚠️ Disclaimer
+
+CandleWick is a reflective journaling tool, not therapy or medical advice. If you are in crisis, please contact a trusted person or your local emergency services.
 
 ---
 
-## 🎨 Design & Aesthetic Elements
-
-- **Palette:**
-  - Espresso background (`#1F120C`)
-  - Deep Mahogany (`#3B2016`)
-  - Warm Rust (`#8C3B1E`)
-  - Burnt Orange (`#C8621F`)
-  - Candle Amber Glow (`#E8A33D`)
-  - Ruled Parchment paper (`#F3E6D0`)
-  - Soft Ink typography (`#2A1A12`)
-- **Typography:**
-  - **Lora** (Serif) loaded from Google Fonts for introspective journal pages, reflections, and headings.
-  - **Inter** (Sans-serif) for clean, accessible navigation and controls.
-- **Animations & Visual Details:**
-  - Pure CSS slow-drifting ember and dust-mote particles in warm oranges (automatically disabled under `prefers-reduced-motion`).
-  - Animated SVG candle flame with organic flicker.
-  - Custom flat-vector SVG illustration of a cozy armchair beside a lit fireplace with a sleeping kitten.
-  - Two-page notebook spread on desktop with central spine shadow and lined ruled parchment.
-  - 3D page flip animation (`rotateY`) transitioning between reflection states.
-
----
-
-## 🧪 Benchmark & Evaluation (/dev/eval)
-
-CandleWick contains a benchmark suite located in `/src/lib/evals.ts` comprising 20 labeled test entries across all 5 emotional modes.
-You can run live classifier benchmarks at any time via:
-- Navigating to `/dev/eval` or appending `#dev-eval` in the address bar.
-- Or clicking the **Dev / Benchmark Evaluator** link in the Settings modal.
-The suite outputs real-time accuracy percentages, confusion matrices, and latency (in milliseconds).
-
----
-
-## 📚 Open-Source Libraries Used
-
-- [React 19](https://react.dev/) & [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vitejs.dev/) & [Tailwind CSS v4](https://tailwindcss.com/)
-- [Dexie.js](https://dexie.org/) — Reactive IndexedDB wrapper
-- [@google/genai](https://www.npmjs.com/package/@google/genai) — Official Google Gen AI SDK
-- [Zod](https://zod.dev/) — Schema validation
-- [Recharts](https://recharts.org/) — Composable chart primitives
-- [Lucide React](https://lucide.dev/) — Clean, cozy icons
+*Made by Vaishnavi Suvarnakar*
